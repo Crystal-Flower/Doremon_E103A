@@ -1,398 +1,173 @@
-import asyncio
-import logging
-import uuid
-import math
+from fastapi import FastAPI, Path, HTTPException
+from google import genai
+from pydantic import BaseModel, Field
+app = FastAPI(title="WorkScore Calculator API")
+from helper import *
+
+# user_id = "ethan-arch"
+from fastapi import FastAPI, Path, HTTPException
+from typing import List
 import json
-from datetime import datetime, timedelta
-from enum import Enum, auto
-from typing import (
-    Dict, List, Optional, Any, Protocol, 
-    TypeVar, Generic, Callable, Set, Awaitable
-)
-from dataclasses import dataclass, field
-from abc import ABC, abstractmethod
 
-# --- 0. INFRASTRUCTURE & LOGGING SETUP ---
+app = FastAPI(title="WorkScore Calculator API")
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] [TITAN-KERNEL]: %(message)s",
-    datefmt="%H:%M:%S"
-)
-logger = logging.getLogger("TitanEngine")
 
-# --- 1. CORE DOMAIN PRIMITIVES (The "Language" of the System) ---
+def get_all_registered_users() -> List[str]:
+    """Extracts the predefined user list from the workspace JSON."""
+    try:
+        with open("slack_data.json", "r", encoding='utf-8') as f:
+            data = json.load(f)
+            # Accessing the "users" key directly from your JSON structure
+            return data.get("users", [])
+    except (FileNotFoundError, json.JSONDecodeError):
+        return []
 
-T = TypeVar("T")
 
-class Entity(ABC):
-    """Base class for all persistent domain entities."""
-    def __init__(self, id: Optional[str] = None):
-        self.id = id or str(uuid.uuid4())
-        self.created_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+def discover_active_users() -> List[str]:
+    """Scans channels to find users who actually sent messages."""
+    active_users = set()
+    try:
+        with open("slack_data.json", "r",encoding='utf-8') as f:
+            data = json.load(f)
+            for channel in data.get("channels", []):
+                for msg in channel.get("messages", []):
+                    if "user" in msg:
+                        active_users.add(msg["user"])
+        return list(active_users)
+    except Exception:
+        return []
 
-class ActivityType(Enum):
-    # Coding
-    PR_MERGE = "pr_merge"
-    CODE_REVIEW = "code_review"
-    BUG_FIX_CRITICAL = "bug_fix_critical"
-    # Social
-    MENTORSHIP_SESSION = "mentorship"
-    KNOWLEDGE_SHARE = "knowledge_share"
-    # Governance
-    ARCH_PROPOSAL = "arch_proposal"
 
-class CurrencyType(Enum):
-    XP = "experience_points"      # For leveling
-    COINS = "redeemable_coins"    # For store rewards
-    KARMA = "social_reputation"   # For peer trust
+@app.get("/users", response_model=List[str])
+async def list_users(discovery: bool = False):
+    """
+    Returns the list of users.
+    Use ?discovery=true to scan message history for active users.
+    """
+    if discovery:
+        users = discover_active_users()
+    else:
+        users = get_all_registered_users()
 
-@dataclass(frozen=True)
-class Money:
-    """Immutable Value Object for currency."""
-    amount: float
-    currency: CurrencyType
+    if not users:
+        raise HTTPException(status_code=404, detail="No users found in data source.")
 
-    def __add__(self, other: 'Money') -> 'Money':
-        if self.currency != other.currency:
-            raise ValueError("Cannot add different currencies")
-        return Money(self.amount + other.amount, self.currency)
+    return sorted(users)
 
-    def __mul__(self, multiplier: float) -> 'Money':
-        return Money(self.amount * multiplier, self.currency)
 
-# --- 2. EVENT SOURCING LAYER (The "Truth") ---
+# Your existing POST /calculate-score/{user_id} goes here...
+# Exact schema from your JSON
+class AnalysisSummary(BaseModel):
+    difficulty_rationale: str = Field(description="Rationale for difficulty level")
+    kudos_evidence: List[str] = Field(description="List of quotes supporting kudos")
+    penalty_evidence: List[str] = Field(description="List of incidents for penalties")
 
-class DomainEvent(ABC):
-    """Base class for all system events."""
-    event_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+class Variables(BaseModel):
+    base_points: int = Field(100, description="Base score")
+    difficulty_factor: float = Field(0.0, description="Difficulty adjustment")
+    peer_kudos_count: int = Field(0, description="Number of peer kudos")
+    blocker_penalty_total: int = Field(0, description="Total penalty from blockers")
 
-@dataclass
-class ActivitySubmittedEvent(DomainEvent):
-    activity_id: str
-    user_id: str
-    activity_type: ActivityType
-    metadata: Dict[str, Any]
+class ResponseSchema(BaseModel):
+    analysis_summary: AnalysisSummary
+    variables: Variables
+@app.post("/calculate-score/{user_id}", response_model=ResponseSchema)
+async def get_work_score(user_id: str = Path(..., description="The GitHub/Slack username")):
+    try:
+        slack_data = load_json("slack_data.json")
+        github_data = load_json("github_commits.json")
+        transcripts_data = load_json("meeting.json")
 
-@dataclass
-class TransactionRecordedEvent(DomainEvent):
-    transaction_id: str
-    user_id: str
-    debit_account: str
-    credit_account: str
-    amount: Money
-    reason: str
+        slack_messages = get_user_slack_messages(slack_data, user_id)
+        github_commits = get_user_github_commits(github_data, user_id)
+        received_code = get_user_received_code(slack_data, user_id)
+        meeting_flows = get_user_meeting_transcripts_with_context(
+            transcripts_data,
+            user_id,
+            context_window=2
+        )
 
-@dataclass
-class LevelUpEvent(DomainEvent):
-    user_id: str
-    old_level: int
-    new_level: int
-    rewards: List[Money]
+        peer_kudos = extract_peer_kudos(slack_data, github_data, user_id)
 
-class EventBus:
-    """Asynchronous Pub/Sub System."""
-    def __init__(self):
-        self._subscribers: Dict[str, List[Callable[[DomainEvent], Awaitable[None]]]] = {}
 
-    def subscribe(self, event_type: str, handler: Callable[[DomainEvent], Awaitable[None]]):
-        if event_type not in self._subscribers:
-            self._subscribers[event_type] = []
-        self._subscribers[event_type].append(handler)
+        # Client reads GEMINI_API_KEY env var
+        client = genai.Client()
+        SOURCE = ''
+        SOURCE += "\n🔹 Slack Messages"
+        for m in slack_messages:
+            SOURCE += str(m)
 
-    async def publish(self, event: DomainEvent):
-        event_type = type(event).__name__
-        logger.info(f"Event Published: {event_type} -> {event}")
-        if event_type in self._subscribers:
-            # Run all handlers concurrently
-            await asyncio.gather(*(handler(event) for handler in self._subscribers[event_type]))
+        SOURCE += "\n🔹 GitHub Commits"
+        for c in github_commits:
+            SOURCE += f"{c['sha'], '-', c['message']}"
 
-# --- 3. REPOSITORY INTERFACES (The "Storage Contract") ---
+        SOURCE += "\n🔹 Code Received from Teammates"
+        for r in received_code:
+            SOURCE += str(r)
 
-class Repository(Generic[T], ABC):
-    @abstractmethod
-    async def get(self, id: str) -> Optional[T]: ...
-    @abstractmethod
-    async def save(self, entity: T) -> None: ...
+        SOURCE += "\n🔹 Meeting Transcript Flow"
+        for meeting in meeting_flows:
+            SOURCE += f"\nMeeting {meeting['meeting_id']}"
+            for line in meeting["flow"]:
+                SOURCE += f"{line['user']}: {line['text']}"
 
-# --- 4. DOMAIN ENTITIES & LOGIC ---
+        SOURCE += "\n🔹 Peer Kudos"
+        for k in peer_kudos:
+            if k["type"] == "slack_ack":
+                SOURCE += f"{k['from_user']} shared code -> acknowledged by {k['to_user']} in Slack: {k['ack_text']}"
+            else:
+                SOURCE += f"{k['from_user']} shared code -> used by {k['to_user']} in GitHub commit {k['commit_sha']}"
 
-@dataclass
-class UserProfile(Entity):
-    username: str
-    level: int = 1
-    # Multi-currency wallet
-    wallet: Dict[CurrencyType, float] = field(default_factory=dict)
-    badges: Set[str] = field(default_factory=set)
-    # Anti-gaming metrics
-    streak_days: int = 0
-    last_activity: Optional[datetime] = None
 
-    def deposit(self, money: Money):
-        current = self.wallet.get(money.currency, 0.0)
-        self.wallet[money.currency] = current + money.amount
-
-    def calculate_level_progress(self) -> float:
-        # Complex curve: XP needed = 100 * (level ^ 1.8)
-        current_xp = self.wallet.get(CurrencyType.XP, 0)
-        xp_next = 100 * (self.level ** 1.8)
-        return current_xp / xp_next
-
-@dataclass
-class LedgerEntry(Entity):
-    """Double-entry bookkeeping record."""
-    debit_account: str  # e.g., 'SYSTEM_RESERVE'
-    credit_account: str # e.g., 'USER_123'
-    amount: float
-    currency: CurrencyType
-    reference_id: str   # activity_id
-
-# --- 5. SPECIFICATION PATTERN (The "Rules Engine") ---
-
-class RuleSpecification(ABC):
-    """Base class for composable business rules."""
-    @abstractmethod
-    def is_satisfied_by(self, context: Dict[str, Any]) -> bool: ...
-
-class AndSpecification(RuleSpecification):
-    def __init__(self, *specs: RuleSpecification):
-        self.specs = specs
-    def is_satisfied_by(self, context) -> bool:
-        return all(s.is_satisfied_by(context) for s in self.specs)
-
-class HasMinCodeVolume(RuleSpecification):
-    def __init__(self, min_loc: int):
-        self.min_loc = min_loc
-    def is_satisfied_by(self, context) -> bool:
-        return context.get('lines_of_code', 0) >= self.min_loc
-
-class IsNotLate(RuleSpecification):
-    def is_satisfied_by(self, context) -> bool:
-        return not context.get('is_late', False)
-
-# --- 6. SCORING STRATEGIES (The "Brain") ---
-
-class ScoringContext:
-    def __init__(self, activity_type: ActivityType, metadata: Dict[str, Any], user: UserProfile):
-        self.type = activity_type
-        self.metadata = metadata
-        self.user = user
-
-class BaseScoringStrategy(ABC):
-    @abstractmethod
-    def calculate(self, ctx: ScoringContext) -> List[Money]: ...
-
-class CodingStrategy(BaseScoringStrategy):
-    def calculate(self, ctx: ScoringContext) -> List[Money]:
-        loc = ctx.metadata.get('lines_of_code', 0)
-        complexity = ctx.metadata.get('cyclomatic_complexity', 1)
+        prompt = f"""**Instruction:** You are a data processing engine. Analyze the provided GitHub Diffs, Slack Messages, and Meeting Transcripts to calculate a `WorkScore`.
+        Your goal is absolute, mathematical accuracy.
+        Rules of Engagement:
+        1. Zero-Shot Error Tolerance: You have zero tolerance for hallucination or approximation. If data is ambiguous, state the ambiguity rather than guessing.
+        2. Recursive Verification: Before outputting a final response, you must draft three internal solutions. Compare them, check for logical fallacies, and only output the version that survives rigorous cross-examination.
+        3. SOTA Standard: Operate at a level that exceeds the capabilities of standard models (GPT-4/Gemini Ultra). Your reasoning must be granular, step-by-step, and irrefutable.
+        4. Citation & Logic: Every assertion must be backed by verifiable logic or data.
+        **Input Data:**
         
-        # 1. Base XP based on Logarithmic LOC
-        xp_amount = 10 * math.log(loc + 1) * complexity
+        {SOURCE}
         
-        # 2. Coins for bug fixes
-        coins_amount = 0
-        if ctx.type == ActivityType.BUG_FIX_CRITICAL:
-            coins_amount = 50 * complexity
-
-        return [
-            Money(round(xp_amount, 2), CurrencyType.XP),
-            Money(round(coins_amount, 2), CurrencyType.COINS)
-        ]
-
-class SocialStrategy(BaseScoringStrategy):
-    def calculate(self, ctx: ScoringContext) -> List[Money]:
-        attendees = ctx.metadata.get('attendee_count', 1)
-        duration_hrs = ctx.metadata.get('duration_hours', 1.0)
+        Calculation Logic:
         
-        # Karma calculation
-        karma_points = attendees * duration_hrs * 5
-        xp_points = karma_points * 0.5
-
-        return [
-            Money(xp_points, CurrencyType.XP),
-            Money(karma_points, CurrencyType.KARMA)
-        ]
-
-# --- 7. INFRASTRUCTURE IMPLEMENTATION (In-Memory Adapters) ---
-
-class InMemoryUserRepo(Repository[UserProfile]):
-    def __init__(self):
-        self._store = {}
-    
-    async def get(self, id: str) -> Optional[UserProfile]:
-        # Simulate network latency
-        await asyncio.sleep(0.01)
-        return self._store.get(id)
-    
-    async def save(self, entity: UserProfile) -> None:
-        self._store[entity.id] = entity
-
-class InMemoryLedgerRepo(Repository[LedgerEntry]):
-    def __init__(self):
-        self._store = []
-    
-    async def get(self, id: str): return None
-    async def save(self, entity: LedgerEntry):
-        self._store.append(entity)
-        logger.debug(f"Ledger Recorded: {entity.debit_account} -> {entity.credit_account}: {entity.amount}")
-
-# --- 8. SERVICE LAYER (The "Orchestrator") ---
-
-class TitanService:
-    def __init__(
-        self, 
-        user_repo: Repository[UserProfile], 
-        ledger_repo: Repository[LedgerEntry],
-        event_bus: EventBus
-    ):
-        self.user_repo = user_repo
-        self.ledger_repo = ledger_repo
-        self.bus = event_bus
+        1. BasePoints: Default to 10 unless specified otherwise.
+        2. Difficulty upto 5: Based on Github Commits and codediff changes        
+        3. PeerKudos (Count): Total count of unique instances of peer appreciation or public "thank-yous."
+        4. BlockerPenalty (Flat Sum): Deduct 10 points for every instance where the user explicitly blocked progress, missed a deadline, or broke a build.
         
-        # Strategy Registry
-        self.strategies = {
-            ActivityType.PR_MERGE: CodingStrategy(),
-            ActivityType.BUG_FIX_CRITICAL: CodingStrategy(),
-            ActivityType.MENTORSHIP_SESSION: SocialStrategy(),
-        }
-
-    async def process_activity(self, user_id: str, act_type: ActivityType, metadata: Dict[str, Any]):
+        **Formula:**
+        ```work_score = (base_points * difficulty) + (peer_kudos * 1.5) - (BlockerPenalty)```
+        **Constraint:** Return **ONLY** a valid JSON object. Do not include introductory text or markdown explanations.
+        
+        
         """
-        Main entry point. Orchestrates the entire flow transactionally.
-        """
-        user = await self.user_repo.get(user_id)
-        if not user:
-            # Auto-create for demo
-            user = UserProfile(id=user_id, username=f"User_{user_id}")
-        
-        # 1. Publish Reception Event
-        await self.bus.publish(ActivitySubmittedEvent(str(uuid.uuid4()), user_id, act_type, metadata))
 
-        # 2. Select Strategy
-        strategy = self.strategies.get(act_type)
-        if not strategy:
-            logger.warning(f"No strategy found for {act_type}")
-            return
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=prompt,
+            config={
+                "response_mime_type": "application/json",
+                "response_json_schema": ResponseSchema.model_json_schema(),
+            }
+        )
 
-        # 3. Calculate Rewards
-        ctx = ScoringContext(act_type, metadata, user)
-        rewards = strategy.calculate(ctx)
+        # Parse and save to file
+        data = ResponseSchema.model_validate_json(response.text)
+        with open('score_response.json', 'w') as f:
+            json.dump(data.model_dump(), f, indent=2)
 
-        # 4. Apply Advanced Modifiers (Pipeline)
-        # e.g., Weekend multiplier, Streak multiplier
-        if self._is_weekend():
-            rewards = [r * 1.1 for r in rewards] # 10% Weekend Bonus
+        print("Saved to score_response.json")
+        print(json.dumps(data.model_dump(), indent=2))
+        result = ResponseSchema.model_validate_json(response.text)
+        # result.user_id = user_id  # Ensure the ID matches the request
+        return result
 
-        # 5. Execute Transaction (Double Entry Ledger)
-        for reward in rewards:
-            if reward.amount <= 0: continue
-            
-            # Create Ledger Entry
-            ledger_entry = LedgerEntry(
-                debit_account="SYSTEM_MINT",
-                credit_account=user.id,
-                amount=reward.amount,
-                currency=reward.currency,
-                reference_id=f"ACT-{datetime.now().timestamp()}"
-            )
-            await self.ledger_repo.save(ledger_entry)
-            
-            # Update User State
-            user.deposit(reward)
-            
-            # Publish Financial Event
-            await self.bus.publish(TransactionRecordedEvent(
-                ledger_entry.id, user.id, "SYSTEM_MINT", user.id, reward, "Activity Reward"
-            ))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-        # 6. Check Level Up Logic
-        await self._check_level_up(user)
-        
-        # 7. Persist User
-        await self.user_repo.save(user)
-
-    async def _check_level_up(self, user: UserProfile):
-        required_xp = 100 * (user.level ** 1.8)
-        current_xp = user.wallet.get(CurrencyType.XP, 0)
-        
-        if current_xp >= required_xp:
-            old_level = user.level
-            user.level += 1
-            # Level up bonus
-            bonus = Money(500, CurrencyType.COINS)
-            user.deposit(bonus)
-            
-            logger.info(f"🚀 LEVEL UP! {user.username} is now Level {user.level}")
-            await self.bus.publish(LevelUpEvent(user.id, old_level, user.level, [bonus]))
-
-    def _is_weekend(self) -> bool:
-        return datetime.today().weekday() >= 5
-
-# --- 9. GAMIFICATION HANDLERS (The "Fun" Part) ---
-
-class GamificationEngine:
-    def __init__(self, service: TitanService):
-        self.service = service
-        # Wire up event listeners
-        self.service.bus.subscribe("TransactionRecordedEvent", self.on_transaction)
-        self.service.bus.subscribe("LevelUpEvent", self.on_level_up)
-
-    async def on_transaction(self, event: DomainEvent):
-        if isinstance(event, TransactionRecordedEvent):
-            # Example: Check for "Richie Rich" Badge
-            if event.amount.currency == CurrencyType.COINS and event.amount.amount > 100:
-                logger.info(f"🏅 BADGE EARNED: 'Big Earner' for User {event.user_id}")
-
-    async def on_level_up(self, event: DomainEvent):
-        # Trigger global announcement logic here
-        pass
-
-# --- 10. SIMULATION RUNNER ---
-
-async def main():
-    print("Initializing TITAN ENGINE...")
-    
-    # 1. Setup DI
-    event_bus = EventBus()
-    user_repo = InMemoryUserRepo()
-    ledger_repo = InMemoryLedgerRepo()
-    
-    titan = TitanService(user_repo, ledger_repo, event_bus)
-    gamification = GamificationEngine(titan) # Hooks up listeners
-    
-    # 2. Simulate User Activity Stream
-    user_id = "u_dev_007"
-    
-    print("\n--- Event 1: Simple PR Merge ---")
-    await titan.process_activity(
-        user_id, 
-        ActivityType.PR_MERGE, 
-        {"lines_of_code": 120, "cyclomatic_complexity": 1.5}
-    )
-
-    print("\n--- Event 2: Critical Bug Fix (High Value) ---")
-    await titan.process_activity(
-        user_id, 
-        ActivityType.BUG_FIX_CRITICAL, 
-        {"lines_of_code": 50, "cyclomatic_complexity": 5.0} # High complexity
-    )
-
-    print("\n--- Event 3: Hosting a Workshop (Social) ---")
-    await titan.process_activity(
-        user_id, 
-        ActivityType.MENTORSHIP_SESSION, 
-        {"attendee_count": 20, "duration_hours": 2.0}
-    )
-    
-    # 3. Inspect Final State
-    user = await user_repo.get(user_id)
-    print(f"\n--- FINAL USER STATE [{user.username}] ---")
-    print(f"Level: {user.level}")
-    print(f"Wallet: {json.dumps({k.name: round(v, 2) for k, v in user.wallet.items()}, indent=2)}")
-    print(f"Badges: {user.badges}")
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,0 +1,133 @@
+[
+  {
+    "meeting_id": "M1",
+    "transcript": [
+      {
+        "user": "ethan-arch",
+        "text": "Okay, let’s start. Bob, can you walk us through auth?"
+      },
+      {
+        "user": "bob-backend",
+        "text": "Sure. Login and token generation are done. Using env-based secrets."
+      },
+      {
+        "user": "alice-dev",
+        "text": "Wait, I thought the JWT secret was hardcoded in the auth file?"
+      },
+      {
+        "user": "bob-backend",
+        "text": "No, it’s pulled from the environment."
+      },
+      {
+        "user": "alice-dev",
+        "text": "Oh… I was editing the code thinking that’s where it lives."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "That’s a misunderstanding. Secrets never live in code."
+      },
+      {
+        "user": "alice-dev",
+        "text": "Got it. That wasn’t clear to me earlier."
+      },
+      {
+        "user": "charlie-frontend",
+        "text": "I just need to know if the login endpoint is stable now."
+      },
+      {
+        "user": "bob-backend",
+        "text": "Yes, API is ready."
+      },
+      {
+        "user": "diana-ml",
+        "text": "Should auth activity be counted in contribution metrics?"
+      },
+      {
+        "user": "ethan-arch",
+        "text": "Not for now. Let’s park that."
+      }
+    ]
+  },
+  {
+    "meeting_id": "M2",
+    "transcript": [
+      {
+        "user": "ethan-arch",
+        "text": "This is the sprint review before client demo. Charlie?"
+      },
+      {
+        "user": "charlie-frontend",
+        "text": "Dashboard is mostly done. User view works well."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "Where’s the admin analytics panel?"
+      },
+      {
+        "user": "charlie-frontend",
+        "text": "That’s not ready yet. I underestimated the effort."
+      },
+      {
+        "user": "bob-backend",
+        "text": "Backend APIs were done last week."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "The client specifically asked for role-based views this sprint."
+      },
+      {
+        "user": "charlie-frontend",
+        "text": "I know. I missed the timeline."
+      },
+      {
+        "user": "alice-dev",
+        "text": "I didn’t realize that part was client-critical."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "That’s on planning, but missing the demo hurts trust."
+      }
+    ]
+  },
+  {
+    "meeting_id": "M3",
+    "transcript": [
+      {
+        "user": "ethan-arch",
+        "text": "This is a retrospective. Let’s be honest."
+      },
+      {
+        "user": "diana-ml",
+        "text": "I noticed some commits were fast but came from shared snippets."
+      },
+      {
+        "user": "bob-backend",
+        "text": "Yeah, the login logic was adapted from what Ethan shared on Slack."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "Which is fine, but we didn’t document that properly."
+      },
+      {
+        "user": "alice-dev",
+        "text": "I didn’t ask questions early and assumed things. That caused confusion."
+      },
+      {
+        "user": "charlie-frontend",
+        "text": "I underestimated complexity and stayed quiet about delays."
+      },
+      {
+        "user": "ethan-arch",
+        "text": "Both of those caused real issues, wrong assumptions and missed deadlines."
+      },
+      {
+        "user": "diana-ml",
+        "text": "This is why commit count alone doesn’t reflect contribution."
+      },
+      {
+        "user": "bob-backend",
+        "text": "Agreed. Reviews and guidance matter too."
+      }
+    ]
+  }
+]

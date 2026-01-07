@@ -1,0 +1,123 @@
+{
+  "workspace": "mnc-engineering",
+  "project": "mnc-ai-platform",
+  "users": [
+    "alice-dev",
+    "bob-backend",
+    "charlie-frontend",
+    "diana-ml",
+    "ethan-arch"
+  ],
+  "channels": [
+    {
+      "channel_id": "backend",
+      "messages": [
+        {
+          "ts": "2026-01-15T14:10:00Z",
+          "user": "bob-backend",
+          "text": "Implementing JWT login. Does anyone have a clean FastAPI auth snippet?"
+        },
+        {
+          "ts": "2026-01-15T14:15:00Z",
+          "user": "ethan-arch",
+          "text": "Yes — sharing a minimal version we’ve used before 👇"
+        },
+        {
+          "ts": "2026-01-15T14:16:00Z",
+          "user": "ethan-arch",
+          "text": "```python\n@router.post('/login')\ndef login(data: LoginSchema):\n    user = get_user(data.email)\n    if not verify_password(data.password, user.password):\n        raise HTTPException(status_code=401)\n    return create_jwt(user.id)\n```",
+          "contains_code": true
+        },
+        {
+          "ts": "2026-01-15T14:20:00Z",
+          "user": "bob-backend",
+          "text": "Perfect, thanks! I’ll adapt this and commit."
+        }
+      ]
+    },
+
+    {
+      "channel_id": "frontend",
+      "messages": [
+        {
+          "ts": "2026-02-03T15:40:00Z",
+          "user": "charlie-frontend",
+          "text": "Dashboard bundle size is large. Considering lazy loading admin views."
+        },
+        {
+          "ts": "2026-02-03T15:45:00Z",
+          "user": "ethan-arch",
+          "text": "Agree. Use React.lazy with Suspense and early role checks."
+        },
+        {
+          "ts": "2026-02-03T15:48:00Z",
+          "user": "charlie-frontend",
+          "text": "Got it — implementing now."
+        }
+      ]
+    },
+
+    {
+      "channel_id": "ml",
+      "messages": [
+        {
+          "ts": "2026-02-15T20:30:00Z",
+          "user": "diana-ml",
+          "text": "Commit count feels misleading. Need stronger contribution signals."
+        },
+        {
+          "ts": "2026-02-15T20:35:00Z",
+          "user": "ethan-arch",
+          "text": "Use churn entropy, cross-module impact, and review depth."
+        },
+        {
+          "ts": "2026-02-15T20:38:00Z",
+          "user": "diana-ml",
+          "text": "Makes sense — adding these as features."
+        }
+      ]
+    },
+
+    {
+      "channel_id": "general",
+      "messages": [
+        {
+          "ts": "2026-01-12T09:05:00Z",
+          "user": "alice-dev",
+          "text": "Updated README. Should I add JWT_SECRET to env example?"
+        },
+        {
+          "ts": "2026-01-12T09:08:00Z",
+          "user": "bob-backend",
+          "text": "Yes, add it. That’s required for auth."
+        },
+        {
+          "ts": "2026-01-12T09:12:00Z",
+          "user": "alice-dev",
+          "text": "Added 👍"
+        }
+      ]
+    },
+
+    {
+      "channel_id": "architecture",
+      "messages": [
+        {
+          "ts": "2026-03-05T22:10:00Z",
+          "user": "ethan-arch",
+          "text": "Monolith won’t scale for multi-tenant. Proposing event-driven architecture."
+        },
+        {
+          "ts": "2026-03-05T22:15:00Z",
+          "user": "bob-backend",
+          "text": "Kafka vs RabbitMQ?"
+        },
+        {
+          "ts": "2026-03-05T22:18:00Z",
+          "user": "ethan-arch",
+          "text": "Kafka — ordering + replay is critical."
+        }
+      ]
+    }
+  ]
+}

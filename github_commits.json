@@ -1,0 +1,129 @@
+{
+  "repository": "mnc-ai-platform",
+  "commits": [
+    {
+      "sha": "a1f9c01",
+      "author": "alice-dev",
+      "email": "alice@mnc.com",
+      "date": "2026-01-05T10:12:00Z",
+      "files_changed": 2,
+      "lines_added": 34,
+      "lines_deleted": 3,
+      "commit_message": "Fix typo in README and update setup instructions",
+      "area": "documentation",
+      "codediff": "--- a/README.md\n+++ b/README.md\n@@ -12,7 +12,7 @@\n-Instal the dependencies using pip\n+Install the dependencies using pip\n\n python3 -m venv venv\n source venv/bin/activate"
+    },
+    {
+      "sha": "a1f9c02",
+      "author": "alice-dev",
+      "email": "alice@mnc.com",
+      "date": "2026-01-12T09:30:00Z",
+      "files_changed": 1,
+      "lines_added": 22,
+      "lines_deleted": 5,
+      "commit_message": "Add environment variable example file",
+      "area": "config",
+      "codediff": "--- /dev/null\n+++ b/.env.example\n@@ -0,0 +1,5 @@\n+DB_HOST=localhost\n+DB_PORT=5432\n+DB_USER=postgres\n+DB_PASSWORD=postgres\n+JWT_SECRET=changeme"
+    },
+
+    {
+      "sha": "b7c4d11",
+      "author": "bob-backend",
+      "email": "bob@mnc.com",
+      "date": "2026-01-15T14:45:00Z",
+      "files_changed": 4,
+      "lines_added": 210,
+      "lines_deleted": 35,
+      "commit_message": "Implement user authentication APIs",
+      "area": "backend",
+      "codediff": "--- a/app/routes/auth.py\n+++ b/app/routes/auth.py\n@@ -1,5 +1,42 @@\n+@router.post('/login')\n+def login(user: LoginSchema):\n+    db_user = get_user(user.email)\n+    if not verify_password(user.password, db_user.password):\n+        raise HTTPException(status_code=401)\n+    return create_jwt(db_user.id)"
+    },
+    {
+      "sha": "b7c4d12",
+      "author": "bob-backend",
+      "email": "bob@mnc.com",
+      "date": "2026-02-01T11:10:00Z",
+      "files_changed": 3,
+      "lines_added": 124,
+      "lines_deleted": 40,
+      "commit_message": "Refactor auth middleware and improve error handling",
+      "area": "backend",
+      "codediff": "--- a/app/middleware/auth.py\n+++ b/app/middleware/auth.py\n@@ -18,9 +18,15 @@\n- user = decode_token(token)\n- if not user:\n-     return Response(status_code=401)\n+ try:\n+     user = decode_token(token)\n+ except TokenExpiredError:\n+     raise HTTPException(status_code=401, detail='Token expired')"
+    },
+
+    {
+      "sha": "c9e812a",
+      "author": "charlie-frontend",
+      "email": "charlie@mnc.com",
+      "date": "2026-02-03T16:20:00Z",
+      "files_changed": 6,
+      "lines_added": 340,
+      "lines_deleted": 120,
+      "commit_message": "Create dashboard UI with role-based views",
+      "area": "frontend",
+      "codediff": "--- a/src/components/Dashboard.jsx\n+++ b/src/components/Dashboard.jsx\n@@ -1,6 +1,28 @@\n+if (role === 'admin') {\n+  return <AdminDashboard />;\n+}\n+return <UserDashboard />;"
+    },
+    {
+      "sha": "c9e812b",
+      "author": "charlie-frontend",
+      "email": "charlie@mnc.com",
+      "date": "2026-02-10T18:05:00Z",
+      "files_changed": 5,
+      "lines_added": 190,
+      "lines_deleted": 60,
+      "commit_message": "Optimize dashboard performance and lazy load components",
+      "area": "frontend",
+      "codediff": "--- a/src/components/Dashboard.jsx\n+++ b/src/components/Dashboard.jsx\n@@ -3,4 +3,6 @@\n-import AdminDashboard from './AdminDashboard'\n+const AdminDashboard = React.lazy(() => import('./AdminDashboard'))"
+    },
+
+    {
+      "sha": "d3aa91f",
+      "author": "diana-ml",
+      "email": "diana@mnc.com",
+      "date": "2026-02-15T22:40:00Z",
+      "files_changed": 8,
+      "lines_added": 520,
+      "lines_deleted": 80,
+      "commit_message": "Add ML-based workload contribution scoring model",
+      "area": "machine-learning",
+      "codediff": "--- a/ml/model.py\n+++ b/ml/model.py\n@@ -1,3 +1,18 @@\n+class ContributionModel(nn.Module):\n+    def __init__(self):\n+        super().__init__()\n+        self.fc1 = nn.Linear(12, 64)\n+        self.fc2 = nn.Linear(64, 1)"
+    },
+    {
+      "sha": "d3aa920",
+      "author": "diana-ml",
+      "email": "diana@mnc.com",
+      "date": "2026-03-01T21:10:00Z",
+      "files_changed": 6,
+      "lines_added": 310,
+      "lines_deleted": 90,
+      "commit_message": "Improve model accuracy using feature engineering and tuning",
+      "area": "machine-learning",
+      "codediff": "--- a/ml/features.py\n+++ b/ml/features.py\n@@ -10,6 +10,10 @@\n+features['commit_entropy'] = entropy(commit_times)\n+features['review_depth'] = review_comments / prs"
+    },
+
+    {
+      "sha": "e91caa1",
+      "author": "ethan-arch",
+      "email": "ethan@mnc.com",
+      "date": "2026-03-05T23:55:00Z",
+      "files_changed": 12,
+      "lines_added": 890,
+      "lines_deleted": 420,
+      "commit_message": "Redesign system architecture for scalability and multi-tenancy",
+      "area": "architecture",
+      "codediff": "--- a/app/main.py\n+++ b/app/main.py\n@@ -1,4 +1,20 @@\n+app = FastAPI(lifespan=lifespan)\n+register_tenant_middleware(app)\n+register_event_bus(app)"
+    },
+    {
+      "sha": "e91caa2",
+      "author": "ethan-arch",
+      "email": "ethan@mnc.com",
+      "date": "2026-03-10T01:15:00Z",
+      "files_changed": 7,
+      "lines_added": 260,
+      "lines_deleted": 110,
+      "commit_message": "Introduce event-driven pipeline using Kafka",
+      "area": "infrastructure",
+      "codediff": "--- a/app/events/producer.py\n+++ b/app/events/producer.py\n@@ -1,3 +1,12 @@\n+producer.send('contribution-events', value=payload)\n+producer.flush()"
+    }
+  ]
+}
